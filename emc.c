@@ -1035,7 +1035,7 @@ int main(int argc, char **argv)
       model->data[i] = 0.0;
       weight->data[i] = 0.0;
     }
-
+    clock_t local_t_i = clock();
     /* update scaling */
     if (known_intensity == 0) {
       scaling_error = 0.0;
@@ -1077,34 +1077,13 @@ int main(int argc, char **argv)
       fflush(scale);
       
     }
+    clock_t local_t_e = clock();
+        printf("Update scaling time = %fms\n",1000.0*(local_t_e - local_t_i)/CLOCKS_PER_SEC);
     /* update slices */
     overal_respons = cuda_update_slices(images, slices, mask,
 					respons, scaling, N_images, N_slices, N_2d,
 					model, x_coordinates, y_coordinates,
 					z_coordinates, rotations, weights, weight);
-    /*    overal_respons = 0.0;
-    printf("scaling 0 - %f\n",scaling[0]);
-    for (int i_slice = 0; i_slice < N_slices; i_slice++) {
-      for (int i = 0; i < N_2d; i++) {
-	slices[i_slice]->data[i] = 0.0;
-      }
-      total_respons = update_slice(images, slices, mask,
-				   respons, scaling,
-				   N_images, N_2d, i_slice);
-      overal_respons += total_respons;
-      if (total_respons > 1e-10) {
-
-	for (int i = 0; i < N_2d; i++) {
-	  if (mask->data[i] != 0) {
-	    slices[i_slice]->data[i] /= total_respons;
-	  }
-	}
-	insert_slice(model, weight, slices[i_slice], mask, weights[i_slice]*total_respons,
-		     rotations[i_slice], x_coordinates, y_coordinates, z_coordinates);
-      }
-      }*/
-    //fprintf(f,"%g\n",total_respons);
-    //fflush(f);
 
     t_e = clock();
     printf("Maximize time = %fms\n",1000.0*(t_e - t_i)/CLOCKS_PER_SEC);
