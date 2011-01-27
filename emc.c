@@ -671,7 +671,7 @@ int main(int argc, char **argv)
   const real intensity_fluct = 0.2; //when reading images they are randomly rescaled. Temporary.
   const int mask_input = 1; //0 = no_mask, 1 = mask_from_file
   //const char *mask_file = "/home/ekeberg/Work/max/spowpy/virus_dataset/mask.h5";
-  const char *mask_file = "/Users/filipe/Work/Tomas/Data/LCLS2010/mimi_dataset_from_meng/mask.h5";
+  const char *mask_file = "mask.h5";
 
   const int blur_image = 0; //0 = no, 1 = yes
   const real blur_radius = 3.0;
@@ -752,7 +752,7 @@ int main(int argc, char **argv)
     printf("%g ", intensities[i]);
     //sprintf(buffer,"/home/ekeberg/Work/max/spowpy/virus_dataset/theoretical/image_%.4d.h5",i);
     //sprintf(buffer,"/home/ekeberg/Work/max/spowpy/virus_dataset/poisson/image_%.4d.h5",i);
-    sprintf(buffer,"/Users/filipe/Work/Tomas/Data/LCLS2010/mimi_dataset_from_meng/all_manually_filtered_renumbered/image_%.4d.h5",i);
+    sprintf(buffer,"Data/image_%.4d.h5",i);
     img = sp_image_read(buffer,0);
     if (blur_image == 1) {
       Image *tmp = sp_gaussian_blur(img,blur_radius);
