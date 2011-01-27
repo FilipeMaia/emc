@@ -10,13 +10,17 @@ __global__ void update_slices_kernel(float * images, float * slices, int * mask,
   int step = blockDim.x;
   float total_respons = 0.0f;
   int i_slice = bid;
-  for (int i_image = 0; i_image < N_images; i_image++) {
-    for (int i = tid; i < N_2d; i+=step) {
-      if (mask[i] != 0) {
-	slices[i_slice*N_2d+i] += images[i_image*N_2d+i]*
+  for (int i = tid; i < N_2d; i+=step) {
+    if (mask[i] != 0) {
+      real sum = 0;
+      for (int i_image = 0; i_image < N_images; i_image++) {
+	sum += images[i_image*N_2d+i]*
 	  respons[i_slice*N_images+i_image]/scaling[i_image];
       }
+      slices[i_slice*N_2d+i] = sum;
     }
+  }
+  for (int i_image = 0; i_image < N_images; i_image++) {
     total_respons += respons[i_slice*N_images+i_image];
   }
   if(tid == 0){    
@@ -62,9 +66,21 @@ float cuda_update_slices(sp_matrix ** images, sp_matrix ** slices, sp_imatrix * 
   int nthreads = 256;
   float * d_slices_total_respons;
   cudaMalloc(&d_slices_total_respons,sizeof(float)*N_slices);
+  cudaEvent_t k_begin;
+  cudaEvent_t k_end;
+  cudaEventCreate(&k_begin);
+  cudaEventCreate(&k_end);
+  cudaEventRecord (k_begin,0);
+
   update_slices_kernel<<<nblocks,nthreads>>>(d_images, d_slices, d_mask, d_respons,
 					     d_scaling, N_images, N_slices, N_2d,
 					     d_slices_total_respons);
+  cudaEventRecord(k_end,0);
+  cudaEventSynchronize(k_end);
+  float k_ms;
+  cudaEventElapsedTime (&k_ms, k_begin, k_end);
+  printf("cuda kernel slice update time = %fms\n",k_ms);
+
   cudaError_t status = cudaGetLastError();
   if(status != cudaSuccess){
     printf("CUDA Error: %s\n",cudaGetErrorString(status));
