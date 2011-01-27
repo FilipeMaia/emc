@@ -2,18 +2,8 @@
 #include <spimage.h>
 #include <gsl/gsl_rng.h>
 #include <time.h>
+#include "emc.h"
 
-typedef struct{
-  real q[4];
-}Quaternion;
-
-typedef struct{
-  int side;
-  real wavelength;
-  real pixel_size;
-  int detector_size;
-  real detector_distance;
-}Setup;
 
 Quaternion *quaternion_alloc()
 {
@@ -498,6 +488,22 @@ void insert_slice(sp_3matrix *model, sp_3matrix *weight, sp_matrix *slice,
       }//endif
     }
   }
+}
+
+real update_slice(sp_matrix ** images, sp_matrix ** slices, sp_imatrix * mask,
+		  real * respons, real * scaling,
+		  int N_images, int N_2d, int i_slice){
+  real total_respons = 0.0;
+  for (int i_image = 0; i_image < N_images; i_image++) {
+    for (int i = 0; i < N_2d; i++) {
+      if (mask->data[i] != 0) {
+	slices[i_slice]->data[i] += images[i_image]->data[i]*
+	  respons[i_slice*N_images+i_image]/scaling[i_image];
+      }
+    }
+    total_respons += respons[i_slice*N_images+i_image];
+  }
+  return total_respons;
 }
 
 real slice_weighting(sp_matrix ** images, sp_matrix ** slices,sp_imatrix * mask,
@@ -1043,18 +1049,6 @@ int main(int argc, char **argv)
 	weighted_power = slice_weighting(images, slices, mask,
 					 respons, scaling,
 					 N_slices,  N_2d,  i_image, N_images);
-	/*
-	weighted_power = 0.0;
-	for (int i_slice = 0; i_slice < N_slices; i_slice++) { 
-	  correlation = 0.0;
-	  for (int i = 0; i < N_2d; i++) {
-	    if (mask->data[i] != 0) {
-	      correlation += images[i_image]->data[i]*slices[i_slice]->data[i];
-	    }
-	  }
-	  weighted_power += respons[i_slice*N_images+i_image]*correlation;
-	}
-	*/
 	scaling[i_image] = image_power/weighted_power;
       }
 
@@ -1084,31 +1078,31 @@ int main(int argc, char **argv)
       
     }
     /* update slices */
-    overal_respons = 0.0;
+    overal_respons = cuda_update_slices(images, slices, mask,
+					respons, scaling, N_images, N_slices, N_2d,
+					model, x_coordinates, y_coordinates,
+					z_coordinates, rotations, weights, weight);
+    /*    overal_respons = 0.0;
+    printf("scaling 0 - %f\n",scaling[0]);
     for (int i_slice = 0; i_slice < N_slices; i_slice++) {
       for (int i = 0; i < N_2d; i++) {
 	slices[i_slice]->data[i] = 0.0;
       }
-      total_respons = 0.0;
-      for (int i_image = 0; i_image < N_images; i_image++) {
-	for (int i = 0; i < N_2d; i++) {
-	  if (mask->data[i] != 0) {
-	    slices[i_slice]->data[i] += images[i_image]->data[i]*respons[i_slice*N_images+i_image]/scaling[i_image];
-	  }
-	}
-	total_respons += respons[i_slice*N_images+i_image];
-      }
+      total_respons = update_slice(images, slices, mask,
+				   respons, scaling,
+				   N_images, N_2d, i_slice);
       overal_respons += total_respons;
       if (total_respons > 1e-10) {
+
 	for (int i = 0; i < N_2d; i++) {
 	  if (mask->data[i] != 0) {
 	    slices[i_slice]->data[i] /= total_respons;
 	  }
 	}
-	insert_slice(model, weight, slices[i_slice], mask, weights[i_slice]*total_respons,//total_respons*weights[i_slice],
+	insert_slice(model, weight, slices[i_slice], mask, weights[i_slice]*total_respons,
 		     rotations[i_slice], x_coordinates, y_coordinates, z_coordinates);
       }
-    }
+      }*/
     //fprintf(f,"%g\n",total_respons);
     //fflush(f);
 
@@ -1157,7 +1151,6 @@ int main(int argc, char **argv)
     sprintf(buffer,"output/model_%.4d.h5",iteration);
     sp_image_write(model_out,buffer,0);
     printf("wrote model\n");
-    exit(0);
   }
   fclose(scale);
   fclose(likelihood);
