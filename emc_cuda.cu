@@ -62,7 +62,9 @@ void cuda_update_scaling(sp_matrix ** images, sp_matrix ** slices, sp_imatrix * 
   }
   real * d_slices;
   cudaMalloc(&d_slices,sizeof(real)*N_2d*N_slices);
-  cudaMemset(d_slices,0,sizeof(real)*N_2d*N_slices);
+  for(int i = 0;i<N_slices;i++){
+    cudaMemcpy(&(d_slices[i*N_2d]),slices[i]->data,sizeof(real)*N_2d,cudaMemcpyHostToDevice);
+  }
   int * d_mask;
   cudaMalloc(&d_mask,sizeof(int)*N_2d);
   cudaMemcpy(d_mask,mask->data,sizeof(int)*N_2d,cudaMemcpyHostToDevice);

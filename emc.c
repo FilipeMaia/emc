@@ -1040,21 +1040,7 @@ int main(int argc, char **argv)
     if (known_intensity == 0) {
       scaling_error = 0.0;
       cuda_update_scaling(images, slices, mask,
-			  respons, scaling, N_images, N_slices, N_2d);
-      /*
-      for (int i_image = 0; i_image < N_images; i_image++) {
-	image_power = 0.0;
-	for (int i = 0; i < N_2d; i++) {
-	  if (mask->data[i] != 0) {
-	    image_power += pow(images[i_image]->data[i],2);
-	  }
-	}
-	weighted_power = slice_weighting(images, slices, mask,
-					 respons, scaling,
-					 N_slices,  N_2d,  i_image, N_images);
-	scaling[i_image] = image_power/weighted_power;
-      }
-      */
+			  respons, scaling, N_images, N_slices, N_2d);     
       scale_sum = 0.0;
       for (int i = 0; i < N_images; i++) {
 	scale_sum += scaling[i];
