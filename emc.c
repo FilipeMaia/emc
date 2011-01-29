@@ -958,15 +958,6 @@ int main(int argc, char **argv)
     for (int i_image = 0; i_image < N_images; i_image++) {
       sum = 0.0;
       min_resp = 1.0;
-      max_resp = -1.0;
-      /*      for (int i_slice = 0; i_slice < N_slices; i_slice++) {
-	if (iteration != 0) {
-	  respons[i_slice*N_images+i_image] = calculate_responsability(slices[i_slice], images[i_image], mask, sigma, scaling[i_image]);
-	} else {
-	  respons[i_slice*N_images+i_image] = calculate_responsability(slices[i_slice], images[i_image], mask, start_sigma, scaling[i_image]);
-	}
-	}
-      */
       max_resp = -1.0e10;
       for (int i_slice = 0; i_slice < N_slices; i_slice++) {
 	if (max_resp < respons[i_slice*N_images+i_image]) {
@@ -1006,21 +997,6 @@ int main(int argc, char **argv)
     printf("likelihood = %g\n",total_respons);
     fflush(likelihood);
   
-      //printf("%d min_resp = %g\n",i_image,min_resp);
-      //printf("%d max_resp = %g\n",i_image,max_resp);
-    /*
-      for (int i_slice = 0; i_slice < N_slices; i_slice++) {
-	//respons[i_slice*N_images+i_image] += min_resp;
-	sum += respons[i_slice*N_images+i_image];
-      }
-      for (int i_slice = 0; i_slice < N_slices; i_slice++) {
-	respons[i_slice*N_images+i_image] /= sum;
-	//fprintf(f,"%g ",respons[i_slice*N_images+i_image]);
-      }
-      //fprintf(f,"\n");
-    }
-    */
-    //fclose(f);
     printf("calculated responsabilities\n");
     /* reset model */
     for (int i = 0; i < N_model; i++) {
@@ -1070,17 +1046,6 @@ int main(int argc, char **argv)
     printf("Maximize time = %fms\n",1000.0*(t_e - t_i)/CLOCKS_PER_SEC);
 
     t_i = clock();
-    /* create new model from responsabilities */
-    /*
-    for (int i_image = 0; i_image < N_images; i_image++) {
-      for (int i_slice = 0; i_slice < N_slices; i_slice++) {
-	//if (respons[i_slice][i_image] > 0.01) {
-	insert_slice(model, weight, images[i_image], respons[i_slice*N_images+i_image],
-		     rotations[i_slice], x_coordinates, y_coordinates, z_coordinates);
-	//}
-      }
-    }
-    */
     model_sum = 0.0;
     for (int i = 0; i < N_model; i++) {
       if (weight->data[i] > 0.0) {
