@@ -945,36 +945,28 @@ int main(int argc, char **argv)
     f = fopen(buffer,"wp");
     */
     clock_t t_i = clock();
+    if(iteration != 0){
+      cuda_calculate_responsabilities(slices, images, mask,
+				      sigma, scaling,respons, 
+				      N_2d, N_images, N_slices);
+    }else{
+      cuda_calculate_responsabilities(slices, images, mask,
+				      start_sigma, scaling,respons, 
+				      N_2d, N_images, N_slices);
+
+    }
     for (int i_image = 0; i_image < N_images; i_image++) {
       sum = 0.0;
       min_resp = 1.0;
       max_resp = -1.0;
-      for (int i_slice = 0; i_slice < N_slices; i_slice++) {
-	/*
-	respons[i_slice][i_image] = calculate_responsability(slices[i_slice], images[i_image], sigma);
-	sum += respons[i_slice][i_image];
-	fprintf(f,"%g ",respons[i_slice][i_image]);
-	*/
-
+      /*      for (int i_slice = 0; i_slice < N_slices; i_slice++) {
 	if (iteration != 0) {
 	  respons[i_slice*N_images+i_image] = calculate_responsability(slices[i_slice], images[i_image], mask, sigma, scaling[i_image]);
 	} else {
 	  respons[i_slice*N_images+i_image] = calculate_responsability(slices[i_slice], images[i_image], mask, start_sigma, scaling[i_image]);
 	}
-	/*
-	respons[i_slice*N_images+i_image] = calculate_correlation(slices[i_slice], images[i_image],
-								  corr_average, corr_scale);
-	*/
-	/*
-	if (min_resp > respons[i_slice*N_images+i_image]) {
-	  min_resp = respons[i_slice*N_images+i_image];
 	}
-	if (max_resp < respons[i_slice*N_images+i_image]) {
-	  max_resp = respons[i_slice*N_images+i_image];
-	}
-	*/
-	//sum += respons[i_slice*N_images+i_image];
-      }
+      */
       max_resp = -1.0e10;
       for (int i_slice = 0; i_slice < N_slices; i_slice++) {
 	if (max_resp < respons[i_slice*N_images+i_image]) {
