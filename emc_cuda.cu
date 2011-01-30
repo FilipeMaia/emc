@@ -153,6 +153,11 @@ void cuda_calculate_responsabilities(sp_matrix ** slices, sp_matrix ** images, s
   }
   cudaMemcpy(respons,d_respons,sizeof(real)*N_images*N_slices,
 	     cudaMemcpyDeviceToHost);
+  real respons_sum = 0;
+  for(int i = 0;i<N_slices*N_images;i++){
+    respons_sum += respons[i];
+  }
+  printf("respons_sum = %f\n",respons_sum);
   cudaFree(d_images);
   cudaFree(d_slices);
   cudaFree(d_mask);
