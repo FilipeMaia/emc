@@ -13,7 +13,7 @@ __device__ void inblock_reduce(T * data){
 __device__ void cuda_insert_slice(real *model, real *weight, real *slice,
 				  int * mask, real w, real *rot, real *x_coordinates,
 				  real *y_coordinates, real *z_coordinates, int slice_rows,
-				  int slice_cols, real model_x, real model_y, real model_z,
+				  int slice_cols, int model_x, int model_y, int model_z,
 				  int tid, int step)
 {
   const int x_max = slice_rows;
@@ -53,10 +53,10 @@ __device__ void cuda_insert_slice(real *model, real *weight, real *slice,
 	    round_y >= 0 && round_y < model_y &&
 	    round_z >= 0 && round_z < model_z) {
 	  /* this can cause problems due to non atomic operations */
-	  //	  model[(int)(round_z*model_x*model_y + round_y*model_x + round_x)] += w * slice[y+x_max + x];	    
-	  atomicAdd(&model[(int)(round_z*model_x*model_y + round_y*model_x + round_x)], w * slice[y+x_max + x]);
-	  //	  weight[(int)(round_z*model_x*model_y + round_y*model_x + round_x)] += w;
-	  atomicAdd(&weight[(int)(round_z*model_x*model_y + round_y*model_x + round_x)], w);
+	  	  model[(round_z*model_x*model_y + round_y*model_x + round_x)] += w * slice[y+x_max + x];	    
+	  //	  atomicAdd(&model[(int)(round_z*model_x*model_y + round_y*model_x + round_x)], w * slice[y+x_max + x]);
+	  	  weight[(round_z*model_x*model_y + round_y*model_x + round_x)] += w;
+	  //	  atomicAdd(&weight[(int)(round_z*model_x*model_y + round_y*model_x + round_x)], w);
 	}
       }//endif
     }
@@ -295,9 +295,10 @@ __global__ void update_slices_kernel(real * images, real * slices, int * mask, r
 	slices[i_slice*N_2d+i] /= total_respons;
       }
     }
-    cuda_insert_slice(model,weight,&slices[bid*N_2d],mask,weights[bid]*total_respons,
-		      &rot[4*bid],x_coord,y_coord,z_coord,
-		      slice_rows,slice_cols,(real)model_x,(real)model_y,(real)model_z,tid,step);
+    __syncthreads();
+    cuda_insert_slice(model,weight,&slices[i_slice*N_2d],mask,weights[i_slice]*total_respons,
+		      &rot[4*i_slice],x_coord,y_coord,z_coord,
+		      slice_rows,slice_cols,model_x,model_y,model_z,tid,step);
   }
   
 }
