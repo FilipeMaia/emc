@@ -1,7 +1,7 @@
 all: emc
 
 emc.o: emc.c
-	gcc -O2 -std=c99 -c emc.c `gsl-config --cflags` -I/usr/common/usg/cuda/3.2/include/
+	gcc -g -std=c99 -c emc.c `gsl-config --cflags` -I/usr/common/usg/cuda/3.2/include/
 
 emc_cuda.o: emc_cuda.cu
 #	nvcc -m64 -c emc_cuda.cu 

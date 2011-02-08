@@ -392,6 +392,54 @@ void calculate_coordinates(Setup setup, sp_matrix *x_coordinates,
   }
 }
 
+
+void get_pixel_from_voxel(real detector_distance, real wavelength,
+					      real pixel_size, int x_max, int y_max,
+					      const real * voxel, real * pixel){
+  const real v_x = voxel[0];
+  const real v_y = voxel[1];
+  const real v_z = voxel[2];
+  real p_x = v_x - 0.5 + x_max/2;
+  real p_y = v_y - 0.5 + y_max/2;
+  real pixel_r = sqrt(v_x*v_x + v_y*v_y);
+  real real_r = pixel_r*pixel_size;
+  real angle_r = atan2(real_r,detector_distance);
+  real fourier_r = sinf(angle_r)/wavelength;
+  real fourier_z = (1.0f - cosf(angle_r))/wavelength;
+  real calc_z = fourier_z/fourier_r*pixel_r;
+  if(fabs(calc_z - v_z) <= 0.5){
+    pixel[0] = p_x;
+    pixel[1] = p_y;    
+  }else{
+    pixel[0] = -1;
+  }
+
+}
+
+void test_get_pixel_from_voxel(Setup setup, sp_matrix *x_coordinates,
+			   sp_matrix *y_coordinates, sp_matrix *z_coordinates) {
+  const int x_max = setup.side;
+  const int y_max = setup.side;
+  for (int x = 0; x < x_max; x++) {
+    for (int y = 0; y < y_max; y++) {
+      real voxel[3];
+      voxel[0] = rint(sp_matrix_get(x_coordinates,x,y));
+      voxel[1] = rint(sp_matrix_get(y_coordinates,x,y));
+      voxel[2] = rint(sp_matrix_get(z_coordinates,x,y));
+      real pixel[2];
+      get_pixel_from_voxel(setup.detector_distance, setup.wavelength,
+			   setup.pixel_size, x_max, y_max,
+			   voxel, pixel);
+      if(lrint(pixel[0]) != x){
+	printf("x - %f and %d don't match\n",pixel[0],x);
+      }
+      if(lrint(pixel[1]) != y){
+	printf("y - %f and %d don't match\n",pixel[1],y);
+      }      
+    }
+  }
+}
+
 void get_slice(sp_3matrix *model, sp_matrix *slice, Quaternion *rot,
 	       sp_matrix *x_coordinates, sp_matrix *y_coordinates,
 	       sp_matrix *z_coordinates)
@@ -825,7 +873,6 @@ int main(int argc, char **argv)
   sp_matrix *y_coordinates = sp_matrix_alloc(setup.side,setup.side);
   sp_matrix *z_coordinates = sp_matrix_alloc(setup.side,setup.side);
   calculate_coordinates(setup, x_coordinates, y_coordinates, z_coordinates);
-
   /* create and fill model */
   Image *model_out = sp_image_alloc(setup.side,setup.side,setup.side);
   sp_3matrix *model = sp_3matrix_alloc(setup.side,setup.side,setup.side);
@@ -1045,7 +1092,7 @@ int main(int argc, char **argv)
     overal_respons = cuda_update_slices(images, slices, mask,
 					respons, scaling, N_images, N_slices, N_2d,
 					model, x_coordinates, y_coordinates,
-					z_coordinates, rotations, weights, weight);
+					z_coordinates, rotations, weights, weight,setup);
 
     t_e = clock();
     printf("Maximize time = %fms\n",1000.0*(t_e - t_i)/CLOCKS_PER_SEC);

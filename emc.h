@@ -25,7 +25,9 @@ typedef struct{
 			  real * respons, real * scaling, int N_images, int N_slices, int N_2d,
 			  sp_3matrix * model, sp_matrix *x_coordinates, sp_matrix *y_coordinates,
 			  sp_matrix *z_coordinates, Quaternion **rotations, real * weights,
-			  sp_3matrix * weight);
+			  sp_3matrix * weight,Setup setup);
+
+
   void cuda_update_scaling(sp_matrix ** images, real * slices, sp_imatrix * mask,
 			   float * respons, float * scaling, int N_images, int N_slices, int N_2d);
   void cuda_calculate_responsabilities(real * slices, sp_matrix ** images, sp_imatrix * mask,
