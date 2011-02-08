@@ -902,11 +902,6 @@ int main(int argc, char **argv)
   sp_image_write(model_out,buffer,0);
   printf("wrote initial model\n");
 
-  /* alloc slices */
-  sp_matrix **slices = malloc(N_slices*sizeof(sp_matrix *));
-  for (int i = 0; i < N_slices; i++) {
-    slices[i] = sp_matrix_alloc(setup.side,setup.side);
-  }
   
   /*real respons[N_slices][N_images];*/
   real *respons = malloc(N_slices*N_images*sizeof(real));
@@ -915,6 +910,15 @@ int main(int argc, char **argv)
   real model_sum;
   FILE *scale = fopen("scale_error.data","wp");
   FILE *likelihood = fopen("likelihood.data","wp");
+
+  /* alloc slices */
+  /*  sp_matrix **slices = malloc(N_slices*sizeof(sp_matrix *));
+  for (int i = 0; i < N_slices; i++) {
+    slices[i] = sp_matrix_alloc(setup.side,setup.side);
+    }*/
+  real * slices;
+  cudaMalloc(&slices,sizeof(real)*setup.side*setup.side*N_slices);
+
   for (int iteration = start_iteration; iteration < max_iterations; iteration++) {
     sum = 0.0;
     for (int i = 0; i < N_model; i++) {
@@ -926,9 +930,10 @@ int main(int argc, char **argv)
 
     printf("iteration %d\n", iteration);
     /* get slices */
-    for (int i = 0; i < N_slices; i++) {
-      get_slice(model, slices[i], rotations[i], x_coordinates, y_coordinates, z_coordinates);
-    }
+    cuda_get_slices(model,slices,rotations, x_coordinates, y_coordinates, z_coordinates,N_slices);
+    //    for (int i = 0; i < N_slices; i++) {
+      //      get_slice(model, slices[i], rotations[i], x_coordinates, y_coordinates, z_coordinates);
+    //    }
     /*
     Image *foo = sp_image_alloc(setup.side,setup.side,1);
     for (int i = 0; i < N_2d; i++) {
