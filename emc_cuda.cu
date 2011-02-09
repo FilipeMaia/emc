@@ -2,6 +2,7 @@
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
 #include <thrust/iterator/constant_iterator.h>
+#include <thrust/fill.h>
 
 
 __global__ void update_slices_kernel(real * images, real * slices, int * mask, real * respons,
@@ -137,28 +138,14 @@ __global__ void calculate_responsabilities_kernel(float * slices, float * images
 
 
 
-void cuda_calculate_responsabilities(real * d_slices, sp_matrix ** images, sp_imatrix * mask,
-				     real sigma, real * scaling, real * respons, 
-				     int N_2d, int N_images, int N_slices){
+void cuda_calculate_responsabilities(real * d_slices, real * d_images, int * d_mask,
+				     real sigma, real * d_scaling, real * d_respons, 
+				     int N_2d, int N_images, int N_slices, real * respons){
   cudaEvent_t begin;
   cudaEvent_t end;
   cudaEventCreate(&begin);
   cudaEventCreate(&end);
   cudaEventRecord (begin,0);
-  real * d_images;
-  cudaMalloc(&d_images,sizeof(real)*N_2d*N_images);
-  for(int i = 0;i<N_images;i++){
-    cudaMemcpy(&(d_images[i*N_2d]),images[i]->data,sizeof(real)*N_2d,cudaMemcpyHostToDevice);
-  }
-  int * d_mask;
-  cudaMalloc(&d_mask,sizeof(int)*N_2d);
-  cudaMemcpy(d_mask,mask->data,sizeof(int)*N_2d,cudaMemcpyHostToDevice);
-  real * d_respons;
-  cudaMalloc(&d_respons,sizeof(real)*N_slices*N_images);
-  cudaMemcpy(d_respons,respons,sizeof(real)*N_slices*N_images,cudaMemcpyHostToDevice);
-  real * d_scaling;
-  cudaMalloc(&d_scaling,sizeof(real)*N_images);
-  cudaMemcpy(d_scaling,scaling,sizeof(real)*N_images,cudaMemcpyHostToDevice);
   dim3 nblocks(N_images,N_slices);
   int nthreads = 256;
   cudaEvent_t k_begin;
@@ -179,17 +166,12 @@ void cuda_calculate_responsabilities(real * d_slices, sp_matrix ** images, sp_im
   if(status != cudaSuccess){
     printf("CUDA Error: %s\n",cudaGetErrorString(status));
   }
-  cudaMemcpy(respons,d_respons,sizeof(real)*N_images*N_slices,
-	     cudaMemcpyDeviceToHost);
+  cudaMemcpy(respons,d_respons,sizeof(real)*N_slices*N_images,cudaMemcpyDeviceToHost);
   real respons_sum = 0;
   for(int i = 0;i<N_slices*N_images;i++){
     respons_sum += respons[i];
   }
   printf("respons_sum = %f\n",respons_sum);
-  cudaFree(d_images);
-  cudaFree(d_mask);
-  cudaFree(d_respons);
-  cudaFree(d_scaling);
   cudaEventRecord(end,0);
   cudaEventSynchronize (end);
   real ms;
@@ -232,27 +214,16 @@ __global__ void slice_weighting_kernel(real * images, real * slices,int * mask,
   }
 }
 
-void cuda_update_scaling(sp_matrix ** images, real * d_slices, sp_imatrix * mask,
-			 real * respons, real * scaling, int N_images, int N_slices, int N_2d){
+void cuda_update_scaling(real * d_images, real * d_slices, int * d_mask,
+			 real * respons, real * d_scaling, int N_images, int N_slices, int N_2d){
   cudaEvent_t begin;
   cudaEvent_t end;
   cudaEventCreate(&begin);
   cudaEventCreate(&end);
   cudaEventRecord (begin,0);
-  real * d_images;
-  cudaMalloc(&d_images,sizeof(real)*N_2d*N_images);
-  for(int i = 0;i<N_images;i++){
-    cudaMemcpy(&(d_images[i*N_2d]),images[i]->data,sizeof(real)*N_2d,cudaMemcpyHostToDevice);
-  }
-  int * d_mask;
-  cudaMalloc(&d_mask,sizeof(int)*N_2d);
-  cudaMemcpy(d_mask,mask->data,sizeof(int)*N_2d,cudaMemcpyHostToDevice);
   real * d_respons;
   cudaMalloc(&d_respons,sizeof(real)*N_slices*N_images);
   cudaMemcpy(d_respons,respons,sizeof(real)*N_slices*N_images,cudaMemcpyHostToDevice);
-  real * d_scaling;
-  cudaMalloc(&d_scaling,sizeof(real)*N_images);
-  cudaMemcpy(d_scaling,scaling,sizeof(real)*N_images,cudaMemcpyHostToDevice);
   int nblocks = N_images;
   int nthreads = 256;
   cudaEvent_t k_begin;
@@ -273,12 +244,7 @@ void cuda_update_scaling(sp_matrix ** images, real * d_slices, sp_imatrix * mask
   if(status != cudaSuccess){
     printf("CUDA Error: %s\n",cudaGetErrorString(status));
   }
-  cudaMemcpy(scaling,d_scaling,sizeof(real)*N_images,
-	     cudaMemcpyDeviceToHost);
-  cudaFree(d_images);
-  cudaFree(d_mask);
   cudaFree(d_respons);
-  cudaFree(d_scaling);
   cudaEventRecord(end,0);
   cudaEventSynchronize (end);
   real ms;
@@ -288,28 +254,12 @@ void cuda_update_scaling(sp_matrix ** images, real * d_slices, sp_imatrix * mask
 
 
 void cuda_get_slices(sp_3matrix * model, real * d_model, real * d_slices, real * d_rot, 
-		     sp_matrix * x_coordinates,
-		     sp_matrix * y_coordinates, sp_matrix * z_coordinates, int N_slices){
+		     real * d_x_coordinates,
+		     real * d_y_coordinates, real * d_z_coordinates, int N_slices){
   
   int rows = sp_3matrix_x(model);
   int cols = sp_3matrix_y(model);
   int N_2d = sp_3matrix_x(model)*sp_3matrix_y(model);
-  /*  real * d_rot;
-  cudaMalloc(&d_rot,sizeof(real)*N_slices*4);
-  for(int i = 0;i<N_slices;i++){
-    cudaMemcpy(&d_rot[4*i],rotations[i]->q,sizeof(real)*4,cudaMemcpyHostToDevice);
-    }*/
-  real * d_x_coordinates;
-  cudaMalloc(&d_x_coordinates,sizeof(real)*sp_matrix_size(x_coordinates));
-  cudaMemcpy(d_x_coordinates,x_coordinates->data,sizeof(real)*sp_matrix_size(x_coordinates),cudaMemcpyHostToDevice);
-
-  real * d_y_coordinates;
-  cudaMalloc(&d_y_coordinates,sizeof(real)*sp_matrix_size(y_coordinates));
-  cudaMemcpy(d_y_coordinates,y_coordinates->data,sizeof(real)*sp_matrix_size(y_coordinates),cudaMemcpyHostToDevice);
-
-  real * d_z_coordinates;
-  cudaMalloc(&d_z_coordinates,sizeof(real)*sp_matrix_size(z_coordinates));
-  cudaMemcpy(d_z_coordinates,z_coordinates->data,sizeof(real)*sp_matrix_size(z_coordinates),cudaMemcpyHostToDevice);
   int nblocks = N_slices;
   int nthreads = 256;
   get_slices_kernel<<<nblocks,nthreads>>>(d_model, d_slices, d_rot,d_x_coordinates,
@@ -317,64 +267,26 @@ void cuda_get_slices(sp_3matrix * model, real * d_model, real * d_slices, real *
 					  rows,cols,
 					  sp_3matrix_x(model),sp_3matrix_y(model),
 					  sp_3matrix_z(model));
-  //  cudaFree(d_rot);
-  cudaFree(d_x_coordinates);
-  cudaFree(d_y_coordinates);
-  cudaFree(d_z_coordinates);
 }
 
-real cuda_update_slices(sp_matrix ** images, real * d_slices, sp_imatrix * mask,
-			real * respons, real * scaling, int N_images, int N_slices, int N_2d,
+real cuda_update_slices(real * d_images, real * d_slices, int * d_mask,
+			real * respons, real * d_scaling, int N_images, int N_slices, int N_2d,
 			sp_3matrix * model, real * d_model,
-			sp_matrix *x_coordinates, sp_matrix *y_coordinates,
-			sp_matrix *z_coordinates, real *d_rot, real * weights,
-			sp_3matrix * weight, Setup setup){
+			real *d_x_coordinates, real *d_y_coordinates,
+			real *d_z_coordinates, real *d_rot, real * weights,
+			real * d_weight, Setup setup, sp_matrix ** images){
   cudaEvent_t begin;
   cudaEvent_t end;
   cudaEventCreate(&begin);
   cudaEventCreate(&end);
   cudaEventRecord (begin,0);
-  real * d_images;
-  cudaMalloc(&d_images,sizeof(real)*N_2d*N_images);
-  for(int i = 0;i<N_images;i++){
-    cudaMemcpy(&(d_images[i*N_2d]),images[i]->data,sizeof(real)*N_2d,cudaMemcpyHostToDevice);
-  }
-  int * d_mask;
-  cudaMalloc(&d_mask,sizeof(int)*N_2d);
-  cudaMemcpy(d_mask,mask->data,sizeof(int)*N_2d,cudaMemcpyHostToDevice);
   real * d_respons;
   cudaMalloc(&d_respons,sizeof(real)*N_slices*N_images);
   cudaMemcpy(d_respons,respons,sizeof(real)*N_slices*N_images,cudaMemcpyHostToDevice);
-  real * d_scaling;
-  cudaMalloc(&d_scaling,sizeof(real)*N_images);
-  cudaMemcpy(d_scaling,scaling,sizeof(real)*N_images,cudaMemcpyHostToDevice);
   dim3 nblocks = N_slices;
   int nthreads = 256;
   real * d_slices_total_respons;
   cudaMalloc(&d_slices_total_respons,sizeof(real)*N_slices);
-
-  real * d_weight;
-  cudaMalloc(&d_weight,sizeof(real)*sp_3matrix_size(weight));
-  cudaMemcpy(d_weight,weight->data,sizeof(real)*sp_3matrix_size(weight),cudaMemcpyHostToDevice);
-
-  /*  real * d_rot;
-  cudaMalloc(&d_rot,sizeof(real)*N_slices*4);
-  for(int i = 0;i<N_slices;i++){
-    cudaMemcpy(&d_rot[4*i],rotations[i]->q,sizeof(real)*4,cudaMemcpyHostToDevice);
-    }*/
-
-  real * d_x_coordinates;
-  cudaMalloc(&d_x_coordinates,sizeof(real)*sp_matrix_size(x_coordinates));
-  cudaMemcpy(d_x_coordinates,x_coordinates->data,sizeof(real)*sp_matrix_size(x_coordinates),cudaMemcpyHostToDevice);
-
-  real * d_y_coordinates;
-  cudaMalloc(&d_y_coordinates,sizeof(real)*sp_matrix_size(y_coordinates));
-  cudaMemcpy(d_y_coordinates,y_coordinates->data,sizeof(real)*sp_matrix_size(y_coordinates),cudaMemcpyHostToDevice);
-
-  real * d_z_coordinates;
-  cudaMalloc(&d_z_coordinates,sizeof(real)*sp_matrix_size(z_coordinates));
-  cudaMemcpy(d_z_coordinates,z_coordinates->data,sizeof(real)*sp_matrix_size(z_coordinates),cudaMemcpyHostToDevice);
-
 
   real * d_weights;
   cudaMalloc(&d_weights,sizeof(real)*N_slices);
@@ -420,20 +332,11 @@ real cuda_update_slices(sp_matrix ** images, real * d_slices, sp_imatrix * mask,
   for (int i_slice = 0; i_slice < N_slices; i_slice++) {
     overal_respons += slices_total_respons[i_slice];
   }
-  cudaMemcpy(weight->data,d_weight,sizeof(real)*sp_3matrix_size(model),cudaMemcpyDeviceToHost);
   cudaMemcpy(model->data,d_model,sizeof(real)*sp_3matrix_size(model),cudaMemcpyDeviceToHost);
 
-  cudaFree(d_images);
-  cudaFree(d_mask);
   cudaFree(d_respons);
-  cudaFree(d_scaling);
   cudaFree(d_slices_total_respons);
-  cudaFree(d_x_coordinates);
-  cudaFree(d_y_coordinates);
-  cudaFree(d_z_coordinates);
-  cudaFree(d_weight);
   cudaFree(d_weights);
-  //  cudaFree(d_rot);
   cudaEventRecord(end,0);
   cudaEventSynchronize (end);
   real ms;
@@ -470,6 +373,14 @@ void cuda_allocate_rotations(real ** d_rotations, Quaternion ** rotations,  int 
   }
 }
 
+void cuda_allocate_images(real ** d_images, sp_matrix ** images,  int N_images){
+
+  cudaMalloc(d_images,sizeof(real)*sp_matrix_size(images[0])*N_images);
+  for(int i = 0;i<N_images;i++){
+    cudaMemcpy(&(*d_images)[sp_matrix_size(images[0])*i],images[i]->data,sizeof(real)*sp_matrix_size(images[0]),cudaMemcpyHostToDevice);
+  }
+}
+
 void cuda_allocate_coords(real ** d_x, real ** d_y, real ** d_z, sp_matrix * x,
 			  sp_matrix * y, sp_matrix * z){
   cudaMalloc(d_x,sizeof(real)*sp_matrix_size(x));
@@ -492,10 +403,7 @@ __global__ void cuda_normalize_model_kernel(real * model, real * weight, int n){
     model[i] = 0.0f;
   }
 }
-void cuda_normalize_model(sp_3matrix * model, real * d_model, sp_3matrix * weight){
-  real * d_weight;
-  cudaMalloc(&d_weight,sizeof(real)*sp_3matrix_size(weight));
-  cudaMemcpy(d_weight,weight->data,sizeof(real)*sp_3matrix_size(weight),cudaMemcpyHostToDevice);
+void cuda_normalize_model(sp_3matrix * model, real * d_model, real * d_weight){
   int n = sp_3matrix_size(model);
   int nthreads = 256;
   int nblocks = (n+nthreads-1)/nthreads;
@@ -506,6 +414,14 @@ void cuda_normalize_model(sp_3matrix * model, real * d_model, sp_3matrix * weigh
   model_sum /= n;
   /* model /= model_sum; */
   thrust::transform(p, p+n,thrust::make_constant_iterator(1.0f/model_sum), p, thrust::multiplies<real>()); 
-  cudaFree(d_weight);
+}
+
+void cuda_allocate_real(real ** x, int n){
+  cudaMalloc(x,n);
 }
 			  
+void cuda_allocate_scaling(real ** d_scaling, int N_images){
+  cudaMalloc(d_scaling,N_images*sizeof(real));
+  thrust::device_ptr<real> p(*d_scaling);
+  thrust::fill(p, p+N_images, real(1));
+}

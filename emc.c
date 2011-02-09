@@ -841,10 +841,10 @@ int main(int argc, char **argv)
     for (int x = 0; x < setup.side; x++) {
       for (int y = 0; y < setup.side; y++) {
 	if (sp_cabs(sp_image_get(mask_in,
-						    (int)(read_stride*((real)(x-setup.side/2)+0.5)+
-							  sp_image_x(mask_in)/2-0.5),
-						    (int)(read_stride*((real)(y-setup.side/2)+0.5)+
-							  sp_image_y(mask_in)/2-0.5),0)) == 0.0) {
+				 (int)(read_stride*((real)(x-setup.side/2)+0.5)+
+				       sp_image_x(mask_in)/2-0.5),
+				 (int)(read_stride*((real)(y-setup.side/2)+0.5)+
+				       sp_image_y(mask_in)/2-0.5),0)) == 0.0) {
 	  sp_imatrix_set(mask,x,y,0);
 	} else {
 	  sp_imatrix_set(mask,x,y,1);
@@ -962,6 +962,10 @@ int main(int argc, char **argv)
   cuda_allocate_slices(&slices,setup,N_slices);
   real * d_model;
   cuda_allocate_model(&d_model,model);
+  real * d_weight;
+  cuda_allocate_model(&d_weight,weight);
+  int * d_mask;
+  cuda_allocate_mask(&d_mask,mask);
   real * d_rotations;
   cuda_allocate_rotations(&d_rotations,rotations,N_slices);
   real * d_x_coord;
@@ -969,10 +973,17 @@ int main(int argc, char **argv)
   real * d_z_coord;
   cuda_allocate_coords(&d_x_coord,
 		       &d_y_coord,
-		       &d_y_coord,
+		       &d_z_coord,
 		       x_coordinates,
 		       y_coordinates, 
 		       z_coordinates);
+  real * d_images;
+  cuda_allocate_images(&d_images,images,N_images);
+  real * d_respons;
+  cuda_allocate_real(&d_respons,N_slices*N_images*sizeof(real));
+  real * d_scaling;
+  cuda_allocate_scaling(&d_scaling,N_images);
+  
 
   
   for (int iteration = start_iteration; iteration < max_iterations; iteration++) {
@@ -981,20 +992,20 @@ int main(int argc, char **argv)
 
     printf("iteration %d\n", iteration);
     /* get slices */
-    cuda_get_slices(model,d_model,slices,d_rotations, x_coordinates, y_coordinates, z_coordinates,N_slices);
+    cuda_get_slices(model,d_model,slices,d_rotations, d_x_coord, d_y_coord, d_z_coord,N_slices);
 
     printf("expanded\n");
     /* calculate responsabilities */
 
     clock_t t_i = clock();
     if(iteration != 0){
-      cuda_calculate_responsabilities(slices, images, mask,
-				      sigma, scaling,respons, 
-				      N_2d, N_images, N_slices);
+      cuda_calculate_responsabilities(slices, d_images, d_mask,
+				      sigma, d_scaling,d_respons, 
+				      N_2d, N_images, N_slices,respons);
     }else{
-      cuda_calculate_responsabilities(slices, images, mask,
-				      start_sigma, scaling,respons, 
-				      N_2d, N_images, N_slices);
+      cuda_calculate_responsabilities(slices, d_images, d_mask,
+				      start_sigma, d_scaling,d_respons, 
+				      N_2d, N_images, N_slices,respons);
 
     }
     for (int i_image = 0; i_image < N_images; i_image++) {
@@ -1041,6 +1052,7 @@ int main(int argc, char **argv)
   
     printf("calculated responsabilities\n");
     cuda_reset_model(model,d_model);
+    cuda_reset_model(weight,d_weight);
     /* reset model */    
     for (int i = 0; i < N_model; i++) {
       model->data[i] = 0.0;
@@ -1050,8 +1062,8 @@ int main(int argc, char **argv)
     /* update scaling */
     if (known_intensity == 0) {
       scaling_error = 0.0;
-      cuda_update_scaling(images, slices, mask,
-			  respons, scaling, N_images, N_slices, N_2d);     
+      cuda_update_scaling(d_images, slices, d_mask,
+			  respons, d_scaling, N_images, N_slices, N_2d);     
       scale_sum = 0.0;
       for (int i = 0; i < N_images; i++) {
 	scale_sum += scaling[i];
@@ -1078,18 +1090,18 @@ int main(int argc, char **argv)
       
     }
     clock_t local_t_e = clock();
-        printf("Update scaling time = %fms\n",1000.0*(local_t_e - local_t_i)/CLOCKS_PER_SEC);
+    printf("Update scaling time = %fms\n",1000.0*(local_t_e - local_t_i)/CLOCKS_PER_SEC);
     /* update slices */
-    overal_respons = cuda_update_slices(images, slices, mask,
-					respons, scaling, N_images, N_slices, N_2d,
-					model,d_model, x_coordinates, y_coordinates,
-					z_coordinates, d_rotations, weights, weight,setup);
+    overal_respons = cuda_update_slices(d_images, slices, d_mask,
+					respons, d_scaling, N_images, N_slices, N_2d,
+					model,d_model, d_x_coord, d_y_coord,
+					d_z_coord, d_rotations, weights, d_weight,setup,images);
 
     t_e = clock();
     printf("Maximize time = %fms\n",1000.0*(t_e - t_i)/CLOCKS_PER_SEC);
 
     t_i = clock();
-    cuda_normalize_model(model, d_model,weight);
+    cuda_normalize_model(model, d_model,d_weight);
     printf("compressed\n");
     t_e = clock();
     printf("Compression time = %fms\n",1000.0*(t_e - t_i)/CLOCKS_PER_SEC);
