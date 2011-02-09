@@ -33,6 +33,19 @@ __device__ void inblock_reduce(T * data){
   }  
 }
 
+template<typename T>
+__device__ void inblock_maximum(T * data){
+  __syncthreads();
+  for(unsigned int s=blockDim.x/2; s>0; s>>=1){
+    if (threadIdx.x < s){
+      if(data[threadIdx.x] < data[threadIdx.x + s]){
+	data[threadIdx.x] = data[threadIdx.x + s];
+      }
+    }
+    __syncthreads();
+  }  
+}
+
 
 
 __device__ void cuda_get_slice(real *model, real *slice,
@@ -215,7 +228,8 @@ __global__ void slice_weighting_kernel(real * images, real * slices,int * mask,
 }
 
 void cuda_update_scaling(real * d_images, real * d_slices, int * d_mask,
-			 real * respons, real * d_scaling, int N_images, int N_slices, int N_2d){
+			 real * respons, real * d_scaling, int N_images, int N_slices, int N_2d,
+			 real * scaling){
   cudaEvent_t begin;
   cudaEvent_t end;
   cudaEventCreate(&begin);
@@ -234,6 +248,7 @@ void cuda_update_scaling(real * d_images, real * d_slices, int * d_mask,
   slice_weighting_kernel<<<nblocks,nthreads>>>(d_images,d_slices,d_mask,
 			 d_respons, d_scaling,
 			 N_slices,N_2d, N_images);
+  cudaMemcpy(scaling,d_scaling,sizeof(real)*N_images,cudaMemcpyDeviceToHost);
   cudaEventRecord(k_end,0);
   cudaEventSynchronize(k_end);
   real k_ms;
@@ -424,4 +439,74 @@ void cuda_allocate_scaling(real ** d_scaling, int N_images){
   cudaMalloc(d_scaling,N_images*sizeof(real));
   thrust::device_ptr<real> p(*d_scaling);
   thrust::fill(p, p+N_images, real(1));
+}
+
+__global__ void cuda_normalize_responsabilities_kernel(real * respons, int N_slices, int N_images){
+  __shared__ real cache[256];
+  int i_image = blockIdx.x;
+  int tid = threadIdx.x;
+  int step = blockDim.x;
+  cache[tid] = -1.0e10f;
+  for(int i_slice = tid;i_slice < N_slices;i_slice += step){
+    if(cache[tid] < respons[i_slice*N_images+i_image]){
+      cache[tid] = respons[i_slice*N_images+i_image];
+    }
+  }
+  inblock_maximum(cache);
+  real max_resp = cache[0];
+  for (int i_slice = tid; i_slice < N_slices; i_slice+= step) {
+    respons[i_slice*N_images+i_image] -= max_resp;
+  }
+  cache[tid] = 0;
+  for (int i_slice = tid; i_slice < N_slices; i_slice+=step) {
+    if (respons[i_slice*N_images+i_image] > -1.0e10f) {
+      respons[i_slice*N_images+i_image] = expf(respons[i_slice*N_images+i_image]);
+      cache[tid] += respons[i_slice*N_images+i_image];
+    } else {
+      respons[i_slice*N_images+i_image] = 0.0f;
+    }
+  }
+  inblock_reduce(cache);
+  real sum = cache[0];
+  for (int i_slice = tid; i_slice < N_slices; i_slice+=step) {
+    respons[i_slice*N_images+i_image] /= sum;
+  }
+  
+}
+
+void cuda_normalize_responsabilities(real * d_respons, int N_slices, int N_images){
+  int nblocks = N_images;
+  int nthreads = 256;
+  cuda_normalize_responsabilities_kernel<<<nblocks,nthreads>>>(d_respons,N_slices,N_images);
+}
+
+// x_log_x<T> computes the f(x) -> x*log(x)
+template <typename T>
+struct x_log_x
+{
+  __host__ __device__
+  T operator()(const T& x) const { 
+    if(x > 0){
+      return x * logf(x);
+    }else{
+      return 0;
+    }
+  }
+};
+
+real cuda_total_respons(real * d_respons, real * respons,int n){
+  thrust::device_ptr<real> p(d_respons);
+  for(int i = 0;i<n;i++){
+    if(abs(p[i]-respons[i])/respons[i] > 1e-1){
+      std::cout << "d_respons[0]" << p[i] << std::endl; 
+      std::cout << "respons[" << i << "]" << respons[i] << std::endl; 
+      
+    }
+  }
+
+  x_log_x<real> unary_op;
+  thrust::plus<real> binary_op;
+  real init = 0;
+  // Calculates sum_0^n d_respons*log(d_respons)
+  return thrust::transform_reduce(p, p+n, unary_op, init, binary_op);
 }

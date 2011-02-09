@@ -1008,6 +1008,7 @@ int main(int argc, char **argv)
 				      N_2d, N_images, N_slices,respons);
 
     }
+    cuda_normalize_responsabilities(d_respons, N_slices, N_images);
     for (int i_image = 0; i_image < N_images; i_image++) {
       sum = 0.0;
       min_resp = 1.0;
@@ -1017,14 +1018,13 @@ int main(int argc, char **argv)
 	  max_resp = respons[i_slice*N_images+i_image];
 	}
       }
-      //printf("max_resp = %g\n",max_resp);
       for (int i_slice = 0; i_slice < N_slices; i_slice++) {
 	respons[i_slice*N_images+i_image] -= max_resp;
       }
       sum = 0.0;
       for (int i_slice = 0; i_slice < N_slices; i_slice++) {
-	if (respons[i_slice*N_images+i_image] > -1.0e10) {
-	  respons[i_slice*N_images+i_image] = exp(respons[i_slice*N_images+i_image]);
+	if (respons[i_slice*N_images+i_image] > -1.0e10f) {
+	  respons[i_slice*N_images+i_image] = expf(respons[i_slice*N_images+i_image]);
 	  sum += respons[i_slice*N_images+i_image];
 	} else {
 	  respons[i_slice*N_images+i_image] = 0.0;
@@ -1043,38 +1043,31 @@ int main(int argc, char **argv)
     total_respons = 0.0;
     for (int i_image = 0; i_image < N_images; i_image++) {
       for (int i_slice = 0; i_slice < N_slices; i_slice++) {
-	total_respons += respons[i_slice*N_images+i_image]*log(respons[i_slice*N_images+i_image]);
+	total_respons += respons[i_slice*N_images+i_image]*logf(respons[i_slice*N_images+i_image]);
       }
     }
     fprintf(likelihood,"%g\n",total_respons);
     printf("likelihood = %g\n",total_respons);
+    printf("CUDA likelihood = %g\n",cuda_total_respons(d_respons,respons,N_images*N_slices));
     fflush(likelihood);
   
     printf("calculated responsabilities\n");
+    /* reset model */    
     cuda_reset_model(model,d_model);
     cuda_reset_model(weight,d_weight);
-    /* reset model */    
-    for (int i = 0; i < N_model; i++) {
-      model->data[i] = 0.0;
-      weight->data[i] = 0.0;
-    }
     clock_t local_t_i = clock();
     /* update scaling */
     if (known_intensity == 0) {
       scaling_error = 0.0;
       cuda_update_scaling(d_images, slices, d_mask,
-			  respons, d_scaling, N_images, N_slices, N_2d);     
+			  respons, d_scaling, N_images, N_slices, N_2d,
+			  scaling);     
       scale_sum = 0.0;
       for (int i = 0; i < N_images; i++) {
 	scale_sum += scaling[i];
       }
       scale_sum /= (real)N_images;
 
-      /*
-      for (int i = 0; i < N_images; i++) {
-	scaling[i] /= N_images;
-      }
-      */
       
       if (iteration % 10 == 0) {printf("new scaling: ");}
       correlation = 0.0;

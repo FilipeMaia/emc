@@ -30,7 +30,8 @@ typedef struct{
 
 
   void cuda_update_scaling(real * d_images, real * slices, int * d_mask,
-			   real * respons, real * d_scaling, int N_images, int N_slices, int N_2d);
+			   real * respons, real * d_scaling, int N_images, int N_slices, int N_2d,
+			   real * scaling);
   void cuda_calculate_responsabilities(real * slices, real * images, int * d_mask,
 				       real sigma, real * d_scaling, real * d_respons, 
 				       int N_2d, int N_images, int N_slices, real * respons);
@@ -51,6 +52,8 @@ void cuda_get_slices(sp_3matrix * model, real * d_model, real * d_slices, real *
 			  sp_matrix * y, sp_matrix * z);
   void cuda_allocate_real(real ** x, int n);
   void cuda_allocate_scaling(real ** scaling, int N_images);
+  void cuda_normalize_responsabilities(real * d_respons, int N_slices, int N_images);
+  real cuda_total_respons(real * d_respons, real * respons, int n);
 #ifdef __cplusplus
   }
 #endif
