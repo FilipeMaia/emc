@@ -22,7 +22,7 @@ typedef struct{
 		    sp_matrix *y_coordinates, sp_matrix *z_coordinates);
 
   real cuda_update_slices(real * d_images, real * slices, int * d_mask,
-			  real * respons, real * d_scaling, int N_images, int N_slices, int N_2d,
+			  real * d_respons, real * d_scaling, int N_images, int N_slices, int N_2d,
 			  sp_3matrix * model, real * d_model, 
 			  real  *x_coordinates, real *y_coordinates,
 			  real *z_coordinates, real *d_rotations, real * weights,
@@ -30,7 +30,7 @@ typedef struct{
 
 
   void cuda_update_scaling(real * d_images, real * slices, int * d_mask,
-			   real * respons, real * d_scaling, int N_images, int N_slices, int N_2d,
+			   real * d_respons, real * d_scaling, int N_images, int N_slices, int N_2d,
 			   real * scaling);
   void cuda_calculate_responsabilities(real * slices, real * images, int * d_mask,
 				       real sigma, real * d_scaling, real * d_respons, 

@@ -228,16 +228,13 @@ __global__ void slice_weighting_kernel(real * images, real * slices,int * mask,
 }
 
 void cuda_update_scaling(real * d_images, real * d_slices, int * d_mask,
-			 real * respons, real * d_scaling, int N_images, int N_slices, int N_2d,
+			 real * d_respons, real * d_scaling, int N_images, int N_slices, int N_2d,
 			 real * scaling){
   cudaEvent_t begin;
   cudaEvent_t end;
   cudaEventCreate(&begin);
   cudaEventCreate(&end);
   cudaEventRecord (begin,0);
-  real * d_respons;
-  cudaMalloc(&d_respons,sizeof(real)*N_slices*N_images);
-  cudaMemcpy(d_respons,respons,sizeof(real)*N_slices*N_images,cudaMemcpyHostToDevice);
   int nblocks = N_images;
   int nthreads = 256;
   cudaEvent_t k_begin;
@@ -259,7 +256,6 @@ void cuda_update_scaling(real * d_images, real * d_slices, int * d_mask,
   if(status != cudaSuccess){
     printf("CUDA Error: %s\n",cudaGetErrorString(status));
   }
-  cudaFree(d_respons);
   cudaEventRecord(end,0);
   cudaEventSynchronize (end);
   real ms;
@@ -285,7 +281,7 @@ void cuda_get_slices(sp_3matrix * model, real * d_model, real * d_slices, real *
 }
 
 real cuda_update_slices(real * d_images, real * d_slices, int * d_mask,
-			real * respons, real * d_scaling, int N_images, int N_slices, int N_2d,
+			real * d_respons, real * d_scaling, int N_images, int N_slices, int N_2d,
 			sp_3matrix * model, real * d_model,
 			real *d_x_coordinates, real *d_y_coordinates,
 			real *d_z_coordinates, real *d_rot, real * weights,
@@ -295,9 +291,6 @@ real cuda_update_slices(real * d_images, real * d_slices, int * d_mask,
   cudaEventCreate(&begin);
   cudaEventCreate(&end);
   cudaEventRecord (begin,0);
-  real * d_respons;
-  cudaMalloc(&d_respons,sizeof(real)*N_slices*N_images);
-  cudaMemcpy(d_respons,respons,sizeof(real)*N_slices*N_images,cudaMemcpyHostToDevice);
   dim3 nblocks = N_slices;
   int nthreads = 256;
   real * d_slices_total_respons;
@@ -349,7 +342,6 @@ real cuda_update_slices(real * d_images, real * d_slices, int * d_mask,
   }
   cudaMemcpy(model->data,d_model,sizeof(real)*sp_3matrix_size(model),cudaMemcpyDeviceToHost);
 
-  cudaFree(d_respons);
   cudaFree(d_slices_total_respons);
   cudaFree(d_weights);
   cudaEventRecord(end,0);
@@ -496,14 +488,6 @@ struct x_log_x
 
 real cuda_total_respons(real * d_respons, real * respons,int n){
   thrust::device_ptr<real> p(d_respons);
-  for(int i = 0;i<n;i++){
-    if(abs(p[i]-respons[i])/respons[i] > 1e-1){
-      std::cout << "d_respons[0]" << p[i] << std::endl; 
-      std::cout << "respons[" << i << "]" << respons[i] << std::endl; 
-      
-    }
-  }
-
   x_log_x<real> unary_op;
   thrust::plus<real> binary_op;
   real init = 0;

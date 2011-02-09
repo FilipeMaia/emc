@@ -1009,7 +1009,7 @@ int main(int argc, char **argv)
 
     }
     cuda_normalize_responsabilities(d_respons, N_slices, N_images);
-    for (int i_image = 0; i_image < N_images; i_image++) {
+    /*    for (int i_image = 0; i_image < N_images; i_image++) {
       sum = 0.0;
       min_resp = 1.0;
       max_resp = -1.0e10;
@@ -1033,22 +1033,22 @@ int main(int argc, char **argv)
       for (int i_slice = 0; i_slice < N_slices; i_slice++) {
 	respons[i_slice*N_images+i_image] /= sum;
       }
-    }
+      }*/
 
     clock_t t_e = clock();
     printf("Expansion time = %fms\n",1000.0*(t_e - t_i)/CLOCKS_PER_SEC);
     /* calculate likelihood */
     
     t_i = clock();
-    total_respons = 0.0;
+    /*    total_respons = 0.0;
     for (int i_image = 0; i_image < N_images; i_image++) {
       for (int i_slice = 0; i_slice < N_slices; i_slice++) {
 	total_respons += respons[i_slice*N_images+i_image]*logf(respons[i_slice*N_images+i_image]);
       }
-    }
+      }*/
+    total_respons = cuda_total_respons(d_respons,respons,N_images*N_slices);
     fprintf(likelihood,"%g\n",total_respons);
     printf("likelihood = %g\n",total_respons);
-    printf("CUDA likelihood = %g\n",cuda_total_respons(d_respons,respons,N_images*N_slices));
     fflush(likelihood);
   
     printf("calculated responsabilities\n");
@@ -1060,7 +1060,7 @@ int main(int argc, char **argv)
     if (known_intensity == 0) {
       scaling_error = 0.0;
       cuda_update_scaling(d_images, slices, d_mask,
-			  respons, d_scaling, N_images, N_slices, N_2d,
+			  d_respons, d_scaling, N_images, N_slices, N_2d,
 			  scaling);     
       scale_sum = 0.0;
       for (int i = 0; i < N_images; i++) {
@@ -1086,7 +1086,7 @@ int main(int argc, char **argv)
     printf("Update scaling time = %fms\n",1000.0*(local_t_e - local_t_i)/CLOCKS_PER_SEC);
     /* update slices */
     overal_respons = cuda_update_slices(d_images, slices, d_mask,
-					respons, d_scaling, N_images, N_slices, N_2d,
+					d_respons, d_scaling, N_images, N_slices, N_2d,
 					model,d_model, d_x_coord, d_y_coord,
 					d_z_coord, d_rotations, weights, d_weight,setup,images);
 
