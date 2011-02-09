@@ -5,7 +5,7 @@ emc.o: emc.c
 
 emc_cuda.o: emc_cuda.cu
 #	nvcc -m64 -c emc_cuda.cu 
-	nvcc -m64 -c emc_cuda.cu
+	nvcc -m64 -c emc_cuda.cu -I${HOME}/src/thrust/ -g
 
 emc_atomic.o: emc_atomic.cu
 	nvcc -m64 -c emc_atomic.cu -arch sm_12

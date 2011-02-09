@@ -1,4 +1,7 @@
 #include "emc.h"
+#include <thrust/device_vector.h>
+#include <thrust/host_vector.h>
+#include <thrust/iterator/constant_iterator.h>
 
 
 __global__ void update_slices_kernel(real * images, real * slices, int * mask, real * respons,
@@ -284,21 +287,18 @@ void cuda_update_scaling(sp_matrix ** images, real * d_slices, sp_imatrix * mask
 }
 
 
-void cuda_get_slices(sp_3matrix * model, real * d_slices, Quaternion ** rotations, 
+void cuda_get_slices(sp_3matrix * model, real * d_model, real * d_slices, real * d_rot, 
 		     sp_matrix * x_coordinates,
 		     sp_matrix * y_coordinates, sp_matrix * z_coordinates, int N_slices){
   
   int rows = sp_3matrix_x(model);
   int cols = sp_3matrix_y(model);
   int N_2d = sp_3matrix_x(model)*sp_3matrix_y(model);
-  real * d_model;
-  cudaMalloc(&d_model,sizeof(real)*sp_3matrix_size(model));
-  cudaMemcpy(d_model,model->data,sizeof(real)*sp_3matrix_size(model),cudaMemcpyHostToDevice);
-  real * d_rot;
+  /*  real * d_rot;
   cudaMalloc(&d_rot,sizeof(real)*N_slices*4);
   for(int i = 0;i<N_slices;i++){
     cudaMemcpy(&d_rot[4*i],rotations[i]->q,sizeof(real)*4,cudaMemcpyHostToDevice);
-  }
+    }*/
   real * d_x_coordinates;
   cudaMalloc(&d_x_coordinates,sizeof(real)*sp_matrix_size(x_coordinates));
   cudaMemcpy(d_x_coordinates,x_coordinates->data,sizeof(real)*sp_matrix_size(x_coordinates),cudaMemcpyHostToDevice);
@@ -317,8 +317,7 @@ void cuda_get_slices(sp_3matrix * model, real * d_slices, Quaternion ** rotation
 					  rows,cols,
 					  sp_3matrix_x(model),sp_3matrix_y(model),
 					  sp_3matrix_z(model));
-  cudaFree(d_model);
-  cudaFree(d_rot);
+  //  cudaFree(d_rot);
   cudaFree(d_x_coordinates);
   cudaFree(d_y_coordinates);
   cudaFree(d_z_coordinates);
@@ -326,8 +325,9 @@ void cuda_get_slices(sp_3matrix * model, real * d_slices, Quaternion ** rotation
 
 real cuda_update_slices(sp_matrix ** images, real * d_slices, sp_imatrix * mask,
 			real * respons, real * scaling, int N_images, int N_slices, int N_2d,
-			sp_3matrix * model, sp_matrix *x_coordinates, sp_matrix *y_coordinates,
-			sp_matrix *z_coordinates, Quaternion **rotations, real * weights,
+			sp_3matrix * model, real * d_model,
+			sp_matrix *x_coordinates, sp_matrix *y_coordinates,
+			sp_matrix *z_coordinates, real *d_rot, real * weights,
 			sp_3matrix * weight, Setup setup){
   cudaEvent_t begin;
   cudaEvent_t end;
@@ -353,19 +353,15 @@ real cuda_update_slices(sp_matrix ** images, real * d_slices, sp_imatrix * mask,
   real * d_slices_total_respons;
   cudaMalloc(&d_slices_total_respons,sizeof(real)*N_slices);
 
-  real * d_model;
-  cudaMalloc(&d_model,sizeof(real)*sp_3matrix_size(model));
-  cudaMemcpy(d_model,model->data,sizeof(real)*sp_3matrix_size(model),cudaMemcpyHostToDevice);
-
   real * d_weight;
   cudaMalloc(&d_weight,sizeof(real)*sp_3matrix_size(weight));
   cudaMemcpy(d_weight,weight->data,sizeof(real)*sp_3matrix_size(weight),cudaMemcpyHostToDevice);
 
-  real * d_rot;
+  /*  real * d_rot;
   cudaMalloc(&d_rot,sizeof(real)*N_slices*4);
   for(int i = 0;i<N_slices;i++){
     cudaMemcpy(&d_rot[4*i],rotations[i]->q,sizeof(real)*4,cudaMemcpyHostToDevice);
-  }
+    }*/
 
   real * d_x_coordinates;
   cudaMalloc(&d_x_coordinates,sizeof(real)*sp_matrix_size(x_coordinates));
@@ -424,8 +420,8 @@ real cuda_update_slices(sp_matrix ** images, real * d_slices, sp_imatrix * mask,
   for (int i_slice = 0; i_slice < N_slices; i_slice++) {
     overal_respons += slices_total_respons[i_slice];
   }
-  cudaMemcpy(model->data,d_model,sizeof(real)*sp_3matrix_size(model),cudaMemcpyDeviceToHost);
   cudaMemcpy(weight->data,d_weight,sizeof(real)*sp_3matrix_size(model),cudaMemcpyDeviceToHost);
+  cudaMemcpy(model->data,d_model,sizeof(real)*sp_3matrix_size(model),cudaMemcpyDeviceToHost);
 
   cudaFree(d_images);
   cudaFree(d_mask);
@@ -435,10 +431,9 @@ real cuda_update_slices(sp_matrix ** images, real * d_slices, sp_imatrix * mask,
   cudaFree(d_x_coordinates);
   cudaFree(d_y_coordinates);
   cudaFree(d_z_coordinates);
-  cudaFree(d_model);
   cudaFree(d_weight);
   cudaFree(d_weights);
-  cudaFree(d_rot);
+  //  cudaFree(d_rot);
   cudaEventRecord(end,0);
   cudaEventSynchronize (end);
   real ms;
@@ -446,3 +441,71 @@ real cuda_update_slices(sp_matrix ** images, real * d_slices, sp_imatrix * mask,
   printf("cuda slice update time = %fms\n",ms);
   return overal_respons;
 }
+
+real cuda_model_max(real * model, int model_size){
+  thrust::device_ptr<real> p(model);
+  real max = thrust::reduce(p, p+model_size, real(0), thrust::maximum<real>());
+  return max;
+}
+
+void cuda_allocate_slices(real ** slices,Setup setup,int N_slices){
+  cudaMalloc(slices,sizeof(real)*setup.side*setup.side*N_slices);  
+}
+
+void cuda_allocate_model(real ** d_model, sp_3matrix * model){
+  cudaMalloc(d_model,sizeof(real)*sp_3matrix_size(model));
+  cudaMemcpy(*d_model,model->data,sizeof(real)*sp_3matrix_size(model),cudaMemcpyHostToDevice);
+}
+
+void cuda_allocate_mask(int ** d_mask, sp_imatrix * mask){
+  cudaMalloc(d_mask,sizeof(int)*sp_imatrix_size(mask));
+  cudaMemcpy(*d_mask,mask->data,sizeof(int)*sp_imatrix_size(mask),cudaMemcpyHostToDevice);
+}
+
+void cuda_allocate_rotations(real ** d_rotations, Quaternion ** rotations,  int N_slices){
+
+  cudaMalloc(d_rotations,sizeof(real)*4*N_slices);
+  for(int i = 0;i<N_slices;i++){
+    cudaMemcpy(&(*d_rotations)[4*i],rotations[i]->q,sizeof(real)*4,cudaMemcpyHostToDevice);
+  }
+}
+
+void cuda_allocate_coords(real ** d_x, real ** d_y, real ** d_z, sp_matrix * x,
+			  sp_matrix * y, sp_matrix * z){
+  cudaMalloc(d_x,sizeof(real)*sp_matrix_size(x));
+  cudaMalloc(d_y,sizeof(real)*sp_matrix_size(x));
+  cudaMalloc(d_z,sizeof(real)*sp_matrix_size(x));
+  cudaMemcpy(*d_x,x->data,sizeof(real)*sp_matrix_size(x),cudaMemcpyHostToDevice);
+  cudaMemcpy(*d_y,y->data,sizeof(real)*sp_matrix_size(x),cudaMemcpyHostToDevice);
+  cudaMemcpy(*d_z,z->data,sizeof(real)*sp_matrix_size(x),cudaMemcpyHostToDevice);
+}
+
+void cuda_reset_model(sp_3matrix * model, real * d_model){
+  cudaMemset(d_model,0,sizeof(real)*sp_3matrix_size(model));
+}
+
+__global__ void cuda_normalize_model_kernel(real * model, real * weight, int n){
+  int i = threadIdx.x + blockIdx.x*blockDim.x;
+  if(weight[i] > 0.0f){
+    model[i] /= weight[i];
+  }else{
+    model[i] = 0.0f;
+  }
+}
+void cuda_normalize_model(sp_3matrix * model, real * d_model, sp_3matrix * weight){
+  real * d_weight;
+  cudaMalloc(&d_weight,sizeof(real)*sp_3matrix_size(weight));
+  cudaMemcpy(d_weight,weight->data,sizeof(real)*sp_3matrix_size(weight),cudaMemcpyHostToDevice);
+  int n = sp_3matrix_size(model);
+  int nthreads = 256;
+  int nblocks = (n+nthreads-1)/nthreads;
+  cuda_normalize_model_kernel<<<nblocks,nthreads>>>(d_model,d_weight,n);
+  cudaThreadSynchronize();
+  thrust::device_ptr<real> p(d_model);
+  real model_sum = thrust::reduce(p, p+n, real(0), thrust::plus<real>());
+  model_sum /= n;
+  /* model /= model_sum; */
+  thrust::transform(p, p+n,thrust::make_constant_iterator(1.0f/model_sum), p, thrust::multiplies<real>()); 
+  cudaFree(d_weight);
+}
+			  

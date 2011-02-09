@@ -958,44 +958,34 @@ int main(int argc, char **argv)
   FILE *scale = fopen("scale_error.data","wp");
   FILE *likelihood = fopen("likelihood.data","wp");
 
-  /* alloc slices */
-  /*  sp_matrix **slices = malloc(N_slices*sizeof(sp_matrix *));
-  for (int i = 0; i < N_slices; i++) {
-    slices[i] = sp_matrix_alloc(setup.side,setup.side);
-    }*/
   real * slices;
-  cudaMalloc(&slices,sizeof(real)*setup.side*setup.side*N_slices);
+  cuda_allocate_slices(&slices,setup,N_slices);
+  real * d_model;
+  cuda_allocate_model(&d_model,model);
+  real * d_rotations;
+  cuda_allocate_rotations(&d_rotations,rotations,N_slices);
+  real * d_x_coord;
+  real * d_y_coord;
+  real * d_z_coord;
+  cuda_allocate_coords(&d_x_coord,
+		       &d_y_coord,
+		       &d_y_coord,
+		       x_coordinates,
+		       y_coordinates, 
+		       z_coordinates);
 
+  
   for (int iteration = start_iteration; iteration < max_iterations; iteration++) {
-    sum = 0.0;
-    for (int i = 0; i < N_model; i++) {
-      if (model->data[i] > sum) {
-	sum = model->data[i];
-      }
-    }
+    sum = cuda_model_max(d_model,N_model);
     printf("model max = %g\n",sum);
 
     printf("iteration %d\n", iteration);
     /* get slices */
-    cuda_get_slices(model,slices,rotations, x_coordinates, y_coordinates, z_coordinates,N_slices);
-    //    for (int i = 0; i < N_slices; i++) {
-      //      get_slice(model, slices[i], rotations[i], x_coordinates, y_coordinates, z_coordinates);
-    //    }
-    /*
-    Image *foo = sp_image_alloc(setup.side,setup.side,1);
-    for (int i = 0; i < N_2d; i++) {
-      foo->image->data[i] = sp_cinit(slices[0]->data[i],0.0);
-    }
-    sp_image_write(foo,"debug_first_slice.h5",0);
-    exit(1);
-    */
+    cuda_get_slices(model,d_model,slices,d_rotations, x_coordinates, y_coordinates, z_coordinates,N_slices);
 
     printf("expanded\n");
     /* calculate responsabilities */
-    /*
-    sprintf(buffer,"debug_respons_%d.data",iteration);
-    f = fopen(buffer,"wp");
-    */
+
     clock_t t_i = clock();
     if(iteration != 0){
       cuda_calculate_responsabilities(slices, images, mask,
@@ -1050,7 +1040,8 @@ int main(int argc, char **argv)
     fflush(likelihood);
   
     printf("calculated responsabilities\n");
-    /* reset model */
+    cuda_reset_model(model,d_model);
+    /* reset model */    
     for (int i = 0; i < N_model; i++) {
       model->data[i] = 0.0;
       weight->data[i] = 0.0;
@@ -1091,26 +1082,14 @@ int main(int argc, char **argv)
     /* update slices */
     overal_respons = cuda_update_slices(images, slices, mask,
 					respons, scaling, N_images, N_slices, N_2d,
-					model, x_coordinates, y_coordinates,
-					z_coordinates, rotations, weights, weight,setup);
+					model,d_model, x_coordinates, y_coordinates,
+					z_coordinates, d_rotations, weights, weight,setup);
 
     t_e = clock();
     printf("Maximize time = %fms\n",1000.0*(t_e - t_i)/CLOCKS_PER_SEC);
 
     t_i = clock();
-    model_sum = 0.0;
-    for (int i = 0; i < N_model; i++) {
-      if (weight->data[i] > 0.0) {
-	model->data[i] /= (weight->data[i]);
-	model_sum += model->data[i];
-      } else {
-	model->data[i] = 0.0;
-      }
-    }
-    model_sum /= (real)N_model;
-    for (int i = 0; i < N_model; i++) {
-      model->data[i] /= model_sum;
-    }
+    cuda_normalize_model(model, d_model,weight);
     printf("compressed\n");
     t_e = clock();
     printf("Compression time = %fms\n",1000.0*(t_e - t_i)/CLOCKS_PER_SEC);
