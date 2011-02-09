@@ -8,7 +8,7 @@ emc_cuda.o: emc_cuda.cu
 	nvcc -m64 -c emc_cuda.cu
 
 emc_atomic.o: emc_atomic.cu
-	nvcc -m64 -c emc_atomic.cu -arch sm_20 -G -g
+	nvcc -m64 -c emc_atomic.cu -arch sm_12
 
 emc: emc.o emc_cuda.o emc_atomic.o
 	nvcc -o emc emc.o emc_cuda.o emc_atomic.o -m64 -lspimage `gsl-config --libs` -L/usr/local/cuda/lib

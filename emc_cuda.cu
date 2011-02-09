@@ -17,36 +17,6 @@ __global__ void insert_slices_kernel(real * images, real * slices, int * mask, r
 				     int slice_rows, int slice_cols,
 				     int model_x, int model_y, int model_z, real * weights);
 
-__global__ void update_slices_gather_kernel(real * images, real * slices, int * mask, real * respons,
-					    real * scaling, int N_images, int N_slices, int N_2d,
-					    real * slices_total_respons, real * rot,
-					    real * model, real * weight,
-					    int slice_rows, int slice_cols,
-					    int model_x, int model_y, int model_z, real * weights,
-					    real detector_distance, real pixel_size);
-
-__global__ void insert_slices_non_atomic_kernel(real *models, real *model_weights,
-						const real *slices,
-						const int * mask,const real *rots,
-						const real *x_coordinates,
-						const real *y_coordinates, 
-						const real *z_coordinates, 
-						const real * slices_total_respons,
-						const real * slice_weights,
-						int slice_rows,
-						int slice_cols, int model_x,
-						int model_y, int model_z);
-
-void insert_slices_non_atomic(const real * d_images,const real * d_slices,
-			     const int * d_mask,const real * d_respons,
-			     const real * d_scaling, int N_images, int N_slices, int N_2d,
-			     const real * d_slices_total_respons, 
-			     const real * d_rot,const real * d_x_coordinates,
-			     const real * d_y_coordinates, const real * d_z_coordinates,
-			     real * d_model, real * d_weight,
-			     int slice_rows, int slice_cols,
-			     int model_x, int model_y, int model_z,
-			      const real * d_slice_weights);
 
 template<typename T>
 __device__ void inblock_reduce(T * data){
@@ -430,26 +400,6 @@ real cuda_update_slices(sp_matrix ** images, real * d_slices, sp_imatrix * mask,
 					     sp_3matrix_x(model),sp_3matrix_y(model),
 					     sp_3matrix_z(model),d_weights);  
   cudaThreadSynchronize();
-  /*  nblocks = dim3(sp_3matrix_z(model),sp_3matrix_y(model));
-  nthreads = sp_3matrix_x(model);
-  update_slices_gather_kernel<<<nblocks,nthreads>>>(d_images, d_slices, d_mask, d_respons,
-						    d_scaling,N_images,N_slices,  N_2d,
-						    d_slices_total_respons, d_rot,
-						    d_model, d_weight,
-						    sp_matrix_rows(images[0]),sp_matrix_cols(images[0]),
-						    sp_3matrix_x(model),sp_3matrix_y(model),
-						    sp_3matrix_z(model),d_weights,
-						    setup.detector_distance, setup.pixel_size);*/
-
-  /*
-  insert_slices_non_atomic(d_images, d_slices, d_mask, d_respons,
-			   d_scaling, N_images, N_slices, N_2d,
-			   d_slices_total_respons, d_rot,d_x_coordinates,
-			   d_y_coordinates,d_z_coordinates,d_model, d_weight,
-			   sp_matrix_rows(images[0]),sp_matrix_cols(images[0]),
-			   sp_3matrix_x(model),sp_3matrix_y(model),
-			   sp_3matrix_z(model),d_weights);  */
-
   insert_slices_kernel<<<nblocks,nthreads>>>(d_images, d_slices, d_mask, d_respons,
 					     d_scaling, N_images, N_slices, N_2d,
 					     d_slices_total_respons, d_rot,d_x_coordinates,
@@ -496,49 +446,3 @@ real cuda_update_slices(sp_matrix ** images, real * d_slices, sp_imatrix * mask,
   printf("cuda slice update time = %fms\n",ms);
   return overal_respons;
 }
-
-void insert_slices_non_atomic(const real * d_images,const real * d_slices,
-			     const int * d_mask,const real * d_respons,
-			     const real * d_scaling, int N_images, int N_slices, int N_2d,
-			     const real * d_slices_total_respons, 
-			     const real * d_rot,const real * d_x_coordinates,
-			     const real * d_y_coordinates, const real * d_z_coordinates,
-			     real * d_model, real * d_weight,
-			     int slice_rows, int slice_cols,
-			     int model_x, int model_y, int model_z,
-			     const real * d_slice_weights){
-  int model_size = model_z*model_y*model_x;
-  /* 
-     Wwe're going to use model and weight stacks, one model and weight per slice
-     so that we don't have to use atomics.
-     We'll reduce them to one in the end .
-  */
-  real * d_model_stack;
-  cudaMalloc(&d_model_stack,sizeof(real)*model_size*N_slices);
-  cudaMemset(d_model_stack,0,sizeof(real)*model_size*N_slices);
-  real * d_weight_stack;
-  cudaMalloc(&d_weight_stack,sizeof(real)*model_size*N_slices);
-  cudaMemset(d_weight_stack,0,sizeof(real)*model_size*N_slices);
-  dim3 nblocks(N_slices);
-  dim3 nthreads(8,8);
-  insert_slices_non_atomic_kernel<<<nblocks,nthreads>>>(d_model_stack,
-					     d_weight_stack,
-					     d_slices,
-					     d_mask,
-					     d_rot,
-					     d_x_coordinates,
-					     d_y_coordinates,
-					     d_z_coordinates,
-					     d_respons,
-					     d_slice_weights,
-					     slice_rows,
-					     slice_cols,
-					     model_x,
-					     model_y,
-					     model_z);
-  cudaMemcpy(d_model,d_model_stack,sizeof(real)*model_size,cudaMemcpyDeviceToDevice);
-  cudaMemcpy(d_weight,d_weight_stack,sizeof(real)*model_size,cudaMemcpyDeviceToDevice);
-  cudaFree(d_model_stack);
-  cudaFree(d_weight_stack);
-}
-
