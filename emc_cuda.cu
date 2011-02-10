@@ -267,7 +267,11 @@ void cuda_update_scaling(real * d_images, real * d_slices, int * d_mask,
 void cuda_get_slices(sp_3matrix * model, real * d_model, real * d_slices, real * d_rot, 
 		     real * d_x_coordinates,
 		     real * d_y_coordinates, real * d_z_coordinates, int N_slices){
-  
+  cudaEvent_t begin;
+  cudaEvent_t end;
+  cudaEventCreate(&begin);
+  cudaEventCreate(&end);
+  cudaEventRecord (begin,0);
   int rows = sp_3matrix_x(model);
   int cols = sp_3matrix_y(model);
   int N_2d = sp_3matrix_x(model)*sp_3matrix_y(model);
@@ -278,6 +282,11 @@ void cuda_get_slices(sp_3matrix * model, real * d_model, real * d_slices, real *
 					  rows,cols,
 					  sp_3matrix_x(model),sp_3matrix_y(model),
 					  sp_3matrix_z(model));
+  cudaEventRecord(end,0);
+  cudaEventSynchronize (end);
+  real ms;
+  cudaEventElapsedTime (&ms, begin, end);
+  printf("cuda get slices time = %fms\n",ms);
 }
 
 real cuda_update_slices(real * d_images, real * d_slices, int * d_mask,

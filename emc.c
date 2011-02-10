@@ -1009,43 +1009,12 @@ int main(int argc, char **argv)
 
     }
     cuda_normalize_responsabilities(d_respons, N_slices, N_images);
-    /*    for (int i_image = 0; i_image < N_images; i_image++) {
-      sum = 0.0;
-      min_resp = 1.0;
-      max_resp = -1.0e10;
-      for (int i_slice = 0; i_slice < N_slices; i_slice++) {
-	if (max_resp < respons[i_slice*N_images+i_image]) {
-	  max_resp = respons[i_slice*N_images+i_image];
-	}
-      }
-      for (int i_slice = 0; i_slice < N_slices; i_slice++) {
-	respons[i_slice*N_images+i_image] -= max_resp;
-      }
-      sum = 0.0;
-      for (int i_slice = 0; i_slice < N_slices; i_slice++) {
-	if (respons[i_slice*N_images+i_image] > -1.0e10f) {
-	  respons[i_slice*N_images+i_image] = expf(respons[i_slice*N_images+i_image]);
-	  sum += respons[i_slice*N_images+i_image];
-	} else {
-	  respons[i_slice*N_images+i_image] = 0.0;
-	}
-      }
-      for (int i_slice = 0; i_slice < N_slices; i_slice++) {
-	respons[i_slice*N_images+i_image] /= sum;
-      }
-      }*/
-
     clock_t t_e = clock();
     printf("Expansion time = %fms\n",1000.0*(t_e - t_i)/CLOCKS_PER_SEC);
     /* calculate likelihood */
     
     t_i = clock();
-    /*    total_respons = 0.0;
-    for (int i_image = 0; i_image < N_images; i_image++) {
-      for (int i_slice = 0; i_slice < N_slices; i_slice++) {
-	total_respons += respons[i_slice*N_images+i_image]*logf(respons[i_slice*N_images+i_image]);
-      }
-      }*/
+
     total_respons = cuda_total_respons(d_respons,respons,N_images*N_slices);
     fprintf(likelihood,"%g\n",total_respons);
     printf("likelihood = %g\n",total_respons);
