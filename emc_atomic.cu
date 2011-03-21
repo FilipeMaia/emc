@@ -74,7 +74,7 @@ __device__ void cuda_insert_slice(real *model, real *weight, real *slice,
 
 
 __global__ void update_slices_kernel(real * images, real * slices, int * mask, real * respons,
-				     real * scaling, int N_images, int N_slices, int N_2d,
+				     real * scaling, int * active_images, int N_images, int slice_start, int N_2d,
 				     real * slices_total_respons, real * rot,
 				     real * x_coord, real * y_coord, real * z_coord,
 				     real * model, real * weight,
@@ -90,14 +90,18 @@ __global__ void update_slices_kernel(real * images, real * slices, int * mask, r
     if (mask[i] != 0) {
       real sum = 0;
       for (int i_image = 0; i_image < N_images; i_image++) {
-	sum += images[i_image*N_2d+i]*
-	  respons[i_slice*N_images+i_image]/scaling[i_image];
+	if (active_images[i_image]) {
+	  sum += images[i_image*N_2d+i]*
+	    respons[(slice_start+i_slice)*N_images+i_image]/scaling[i_image];
+	}
       }
       slices[i_slice*N_2d+i] = sum;
     }
   }
   for (int i_image = 0; i_image < N_images; i_image++) {
-    total_respons += respons[i_slice*N_images+i_image];
+    if (active_images[i_image]) {
+      total_respons += respons[(slice_start+i_slice)*N_images+i_image];
+    }
   }
   if(tid == 0){    
     slices_total_respons[bid] =  total_respons;
@@ -113,7 +117,7 @@ __global__ void update_slices_kernel(real * images, real * slices, int * mask, r
 }
 
 __global__ void insert_slices_kernel(real * images, real * slices, int * mask, real * respons,
-				     real * scaling, int N_images, int N_slices, int N_2d,
+				     real * scaling, int N_images, int N_2d,
 				     real * slices_total_respons, real * rot,
 				     real * x_coord, real * y_coord, real * z_coord,
 				     real * model, real * weight,
@@ -132,5 +136,52 @@ __global__ void insert_slices_kernel(real * images, real * slices, int * mask, r
   }  
 }
 
+template<typename T>
+__device__ void inblock_reduce(T * data){
+  __syncthreads();
+  for(unsigned int s=blockDim.x/2; s>0; s>>=1){
+    if (threadIdx.x < s){
+      data[threadIdx.x] += data[threadIdx.x + s];
+    }
+    __syncthreads();
+  }  
+}
+
+__device__ void cuda_calculate_responsability_absolute_atomic(float *slice, float *image, int *mask, real sigma, real scaling, int N_2d, int tid, int step, real * sum_cache, int * count_cache)
+{
+  real sum = 0.0;
+  const int i_max = N_2d;
+  int count = 0;
+  for (int i = tid; i < i_max; i+=step) {
+    if (mask[i] != 0 && slice[i] >= 0.0f) {
+      sum += pow(slice[i] - image[i]/scaling,2);
+      count++;
+    }
+  }
+  sum_cache[tid] = sum;
+  count_cache[tid] = count;
+  //  return -sum/2.0/(real)count/pow(sigma,2); //return in log scale.
+}
 
 
+__global__ void calculate_fit_kernel(real *slices, real *images, int *mask, real *respons, real *fit, real sigma, real *scaling, int N_2d, int slice_start){
+  __shared__ real sum_cache[256];
+  __shared__ int count_cache[256];
+  int tid = threadIdx.x;
+  int step = blockDim.x;
+  int i_image = blockIdx.x;
+  int i_slice = blockIdx.y;
+  int N_images = gridDim.x;
+  cuda_calculate_responsability_absolute_atomic(&slices[i_slice*N_2d],
+					 &images[i_image*N_2d],mask,
+					 sigma,scaling[i_image], N_2d, tid,step,
+					 sum_cache,count_cache);
+  inblock_reduce(sum_cache);
+  inblock_reduce(count_cache);
+  
+  if(tid == 0){
+    atomicFloatAdd(&fit[i_image], expf(-sum_cache[0]/2.0/(real)count_cache[0]/pow(sigma,2)) *
+		   respons[(slice_start+i_slice)*N_images+i_image]);
+  }
+  
+}
